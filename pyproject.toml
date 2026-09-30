@@ -1,0 +1,18 @@
+[project]
+name = "learnagents"
+version = "0.1.0"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "agentscope>=1.0,<2.0",
+    "autogen-agentchat==0.7.4",
+    "autogen-ext[openai]==0.7.4",
+    "google-auth>=2.0",
+    "google-genai>=2.20.0",
+    "greenlet>=3.0",
+    "langgraph==1.2.12",
+    "mcp>=1.13,<2.0",
+    "pydantic>=2.13.5",
+    "python-dotenv>=1.2.3",
+    "tavily-python==0.8.4",
+    "tqdm>=4.66",
+]
