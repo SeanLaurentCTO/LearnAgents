@@ -16,3 +16,11 @@ dependencies = [
     "tavily-python==0.8.4",
     "tqdm>=4.66",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
