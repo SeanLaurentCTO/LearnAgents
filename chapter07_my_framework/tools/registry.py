@@ -7,6 +7,7 @@
 4. 智能参数适配与安全执行 (execute_tool)。
 """
 
+import re
 from typing import Any, Dict, List, Optional, Union
 
 from chapter07_my_framework.tools.base import BaseTool
@@ -97,42 +98,76 @@ class ToolRegistry:
         return "\n\n".join(descriptions)
 
 
+    def _parse_parameter_string(self, params_str: str) -> Dict[str, Any]:
+        """将模型生成的键值对字符串（如 'amount=30, from_currency=AUD'）动态解析为 Python 字典。
+
+        支持带引号与不带引号的字符串值、整数、浮点数以及单个命名参数。
+        """
+        parsed: Dict[str, Any] = {}
+        if not params_str or "=" not in params_str:
+            return parsed
+
+        # 正则匹配 key = value 模式，容忍单引号、双引号及末尾逗号
+        pattern = r"([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*(['\"]?)(.*?)\2(?=(?:,\s*[a-zA-Z_]|\s*$))"
+        matches = re.findall(pattern, params_str.strip())
+
+        if matches:
+            for key, _, val in matches:
+                clean_val = val.strip().strip("'\"")
+                # 自动类型转换：尝试转换为 int 或 float
+                try:
+                    if "." in clean_val:
+                        parsed[key] = float(clean_val)
+                    else:
+                        parsed[key] = int(clean_val)
+                except ValueError:
+                    parsed[key] = clean_val
+            return parsed
+
+        return parsed
+
     def execute_tool(
             self,
             tool_name: str,
             parameters: Union[str, Dict[str, Any], None] = None,
     ) -> str:
-        """智能调度并执行指定名称的工具
-        支持自动适配纯文本入参或结构化字典入参
-        Args:
-            tool_name: 要执行的目标工具名称。
-            parameters: 大模型传递的入参。可以是字典、单个字符串或 None
-        Returns:
-            str: 工具执行后的 Observation 结果字符串。
-        """
+        """智能调度并执行指定名称的工具。
 
+        支持自动适配纯文本入参、键值对参数解析或原生结构化字典入参。
+        """
         tool = self.get_tool(tool_name)
 
         if not tool:
-            return  f"❌ 调度失败：未找到名为 '{tool_name}' 的工具。当前可用工具列表: {self.list_tools()}"
+            return f"❌ 调度失败：未找到名为 '{tool_name}' 的工具。当前可用工具列表: {self.list_tools()}"
 
         try:
+            # 分支 1: 原生字典参数
             if isinstance(parameters, dict):
                 return tool.run(**parameters)
+
+            # 分支 2: 字符串参数
             elif isinstance(parameters, str):
                 params_str = parameters.strip()
-                # 常见单参数工具推断映射
+
+                # 优先尝试：使用增强解析器将类似 amount=30, to_currency='USD' 转化为结构化字典
+                parsed_kwargs = self._parse_parameter_string(params_str)
+                if parsed_kwargs:
+                    return tool.run(**parsed_kwargs)
+
+                # 兜底推断：如果不是键值对，只是单个纯值（如 'SPY' 或 '30 * 0.65'），按单参数规范传参
                 if tool_name in {"calculator", "math"}:
                     return tool.run(expression=params_str)
+                elif tool_name in {"market_quote", "market"}:
+                    return tool.run(symbol=params_str)
+                elif tool_name in {"currency_converter", "fx"}:
+                    return tool.run(amount=params_str)
                 elif tool_name in {"search", "web_search"}:
                     return tool.run(query=params_str)
-                elif tool_name in {"currency_converter", "fx"}:
-                    return tool.run(query=params_str)
                 else:
-                    # 默认以 input 作为参数名调用
                     return tool.run(input=params_str)
+
+            # 分支 3: 空参
             elif parameters is None:
-                # 无参数，空参执行
                 return tool.run()
             else:
                 return tool.run(input=str(parameters))
